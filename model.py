@@ -58,10 +58,47 @@ def _preprocess_data(data):
     # ---------------------------------------------------------------
 
     # ----------- Replace this code with your own preprocessing steps --------
-    predict_vector = feature_vector_df[['Madrid_wind_speed','Bilbao_rain_1h','Valencia_wind_speed']]
+    #predict_vector = feature_vector_df[['Madrid_wind_speed','Bilbao_rain_1h','Valencia_wind_speed']]
+    df_new = feature_vector_df.copy()
+    # Impute the missing values with mean imputation
+    df_new.fillna(value = df_new.mean(), inplace=True )
+    #drop s/no column
+    df_new.drop(['Unnamed: 0'], axis=1, inplace=True, errors='ignore')
+    # Make time columns datetime format
+    df_new['time'] = pd.to_datetime(df_new['time'], utc=False)
+    #Create new features from the time variable
+    df_new['year'] = df_new['time'].dt.year
+    df_new['month'] = df_new['time'].dt.month
+    df_new['day'] = df_new['time'].dt.day
+    df_new['hour'] = df_new['time'].dt.hour
+    df_new['weekday'] = df_new['time'].dt.weekday
+    df_new['week'] = df_new['time'].dt.week
+    # remove correlated  temperature features since temp is the aveg of temp_min and temp_max, we will drop temp_max and temp_min
+    col = ['Madrid_temp_max','Valencia_temp_max','Barcelona_temp_max','Bilbao_temp_max','Seville_temp_max',
+          'Madrid_temp_min','Valencia_temp_min','Barcelona_temp_min','Bilbao_temp_min','Seville_temp_min']
+    df_new = df_new.drop(col,axis=1, errors='ignore')
+    # set time as the index since we have already broken it down into bits..... To avoid duplicate data
+    df_new.set_index('time', inplace=True)
+    df_new.sort_index(inplace=True)
+    # Convert 'Valencia_wind_deg','Seville_pressure' to numerical via pd.get_dummy
+    df_new = pd.get_dummies(df_new,columns=['Valencia_wind_deg','Seville_pressure'],
+                                   drop_first=True)
+    #Replace outliers with the median
+    def replace_outlier(val, mean, std,median):
+        if val > mean + 3*std:
+            return median
+        elif val < mean - 3*std:
+            return median
+        return val
+    for col in df_new.columns:
+        if df_new[col].dtype == 'float64':
+            mean = df_new[col].mean()
+            median = df_new[col].median()
+            std_dev = df_new[col].std(axis=0)
+            df_new[col] = df_new[col].map(lambda x: replace_outlier(x, mean, std_dev,median))
     # ------------------------------------------------------------------------
 
-    return predict_vector
+    return df_new
 
 def load_model(path_to_model:str):
     """Adapter function to load our pretrained model into memory.
